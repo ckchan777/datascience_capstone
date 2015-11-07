@@ -1,0 +1,104 @@
+A mean reversion approach to analyze under represention of businesses in cities of Arizona
+========================================================
+author: CkChan
+date: 20 Nov 2015
+
+Obtaining the mean
+========================================================
+
+```{r,include=FALSE }
+library(dplyr)
+library(ggplot2)
+library(jsonlite)
+azpop<-data.frame(read.csv("arizonapop.csv")) ##Read Arizona's population from external csv file
+colnames(azpop)<-c("city","population")
+azpop2<-subset(azpop,population>=200000)#Work on cities with a sizable population in Arizona
+azpop2<-tbl_df(azpop2)
+azbiz<-stream_in(file("yelp_academic_dataset_business.json"))
+azbiz1<-merge(azbiz,azpop2)## 'city' is the common key to be joined 
+tabbizperc<-round(prop.table(table(azbiz1$city))*100,2)
+tabbizperc<-tbl_df(data.frame(tabbizperc))
+colnames(tabbizperc)<-c('city','bizperc')
+tabbizperc
+azpop2<-tbl_df(subset(azpop,population>=200000 & city!="Tucson")) ##repeat, this time without Tucson
+azbiz1<-merge(azbiz,azpop2)## 'city' is the common key to be joined 
+tabbizperc<-tbl_df(data.frame(round(prop.table(table(azbiz1$city))*100,2)))
+colnames(tabbizperc)<-c('city','bizperc')
+merget1<-tbl_df(merge(azpop2,tabbizperc))
+merget1[4]<-merget1[2]/sum(merget1$population)*100  #create new column for population%
+colnames(merget1)<-c('city','population','bizperc','popuperc')
+azpop2<-tbl_df(subset(azpop,population>=200000 & city!="Tucson" & city!="Scottsdale")) #repeat without Tucson and Scottsdale 
+azpop2perc<-mutate(azpop2,perc=population/sum(azpop2$population))
+azbiz1<-merge(azbiz,azpop2)## 'city' is the common key to be joined 
+tabbizperc<-tbl_df(data.frame(round(prop.table(table(azbiz1$city))*100,2)))
+colnames(tabbizperc)<-c('city','bizperc')
+merget1<-tbl_df(merge(azpop2,tabbizperc))
+merget1[4]<-merget1[2]/sum(merget1$population)*100 #create new column for population%
+colnames(merget1)<-c('city','population','bizperc','popuperc')
+```
+```{r,echo=FALSE}
+merget1
+```
+The column popuperc shows the population mean. Anything less than that implies under representation
+
+
+Difference in business representation from the mean, broken down by cities
+========================================================
+
+```{r,include=FALSE}
+azbizdf<-tbl_df(data.frame(azbiz1[,c(1,8)]))#obtain the top 10 franchises in the state
+azbiztabledf<-tbl_df(data.frame(table(azbizdf$name)))
+azbiztabledf<-tbl_df(data.frame(prop.table(table(azbizdf$name)))) 
+azbiztop10<-top_n(azbiztabledf,10,Freq) 
+azbizdftop10<-data.frame(azbiztop10) #convert to dataframe, use later in table generator function
+azbizdftop10namesonly<-tbl_df(data.frame(azbizdftop10[,1])) 
+azbizdftop10namesonly
+generateTable<-function(a)
+{
+  resulttab<-NULL
+  for (i in 1:a)
+  {
+    test1<-tapply(azbizdf$name==azbizdftop10[i,1],azbizdf$city,sum) 
+    test1<-prop.table(test1)
+    test1<-cbind(azbizdftop10namesonly[i,1],test1)
+    test1<-cbind(row.names(test1),test1) #add in city name
+    resulttab<-rbind(resulttab,test1)
+  }
+  return (resulttab)
+}
+results1<-generateTable(10)
+colnames(results1)<-c('city','name','bizperc')
+results2<-merge(azpop2perc,results1)
+results2$difference<-results2$bizperc-results2$perc 
+results3<-results2[,c(4,1,6)]
+```
+```{r, echo=FALSE}
+ggplot(data=results3, aes(x=city,y=difference)) + geom_point(data = results3, size = 2) +ylim(-0.16, 0.1) + geom_hline(yintercept=-0.05)+ coord_flip() +  facet_wrap( ~ name,ncol=2 ) +  labs(x="City",y="Difference")
+
+```
+
+Results
+========================================================
+
+These are the businesses in respective cities that are more than -5% from the population mean
+
+1. McDonald's    - Phoenix
+
+2. Panda Express - Phoenix 
+
+3. Subway        - Mesa
+
+4. Taco Bell     - Phoenix
+
+5. Walgreens     - Mesa
+
+6. Wendy's       - Phoenix
+
+Conclusion
+========================================================
+
+In conclusion, this study provides a statistical way of analyzing which franchises is too far from the mean. Assuming that this relationship will mean revert to the population mean, it will imply a better risk/reward compared to opening other type of franchises in these cities.
+
+However further analysis has to be done on socio-economic variables which will inevitably affect business decisions.
+
+
